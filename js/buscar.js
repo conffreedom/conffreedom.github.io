@@ -284,27 +284,11 @@ document.addEventListener('DOMContentLoaded', function () {
     resultadoConsulta.style.display = 'block';
   }
 
- function gerarQrCodeCredencial(inscricao) {
+ function gerarQrCodeCredencial(codigo) {
     if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
     credencialQrcodeBox.innerHTML = '';
-
-    // Log para depuração: abra o Console do navegador (F12) para ver a estrutura do objeto
-    console.log('[DEBUG] Dados da inscrição recebidos:', inscricao);
-
-    // Tenta pegar o nome completo de diferentes propriedades possíveis
-    const nomeCompleto = (typeof inscricao === 'object' && inscricao !== null)
-      ? (inscricao.nome_completo || inscricao.nome || inscricao.p_nome || '')
-      : '';
-
-    const codigo = (typeof inscricao === 'object' && inscricao !== null)
-      ? (inscricao.codigo_ingresso || inscricao.codigo || '')
-      : (inscricao || '');
-
-    // Conteúdo final gravado no QR Code
-    const payloadQrCode = `Nome: ${nomeCompleto.trim()}\nIngresso: ${codigo.trim()}`;
-
     new QRCode(credencialQrcodeBox, {
-      text: payloadQrCode,
+      text: codigo,
       width: 160,
       height: 160,
       colorDark: '#0f281e',
@@ -413,7 +397,7 @@ document.addEventListener('DOMContentLoaded', function () {
       credencialNome.textContent = inscricao.nome_completo;
       credencialTipo.textContent = NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso;
       credencialCodigo.textContent = inscricao.codigo_ingresso;
-      gerarQrCodeCredencial(inscricao);
+      gerarQrCodeCredencial(inscricao.codigo_ingresso);
       mostrarEstado(resultadoAprovado);
     } else if (inscricao.status_pagamento === 'recusado') {
       recusadoNome.textContent = (inscricao.nome_completo || '').split(' ')[0];
