@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- Prevenção contra cache do navegador: garante que o participante -->
+<!-- sempre veja a versão mais recente da consulta/credencial. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<title>Minha Credencial — Freedom Conf. 2026</title>
+<meta name="description" content="Consulte sua inscrição na Freedom Conf. 2026 e acesse seu QR Code de entrada." />
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Estilos centralizados do projeto (mesmo arquivo das demais páginas) -->
+<link rel="stylesheet" href="css/styles.css?v=11">
+
+<!-- Gera a imagem do QR code da credencial -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- Transforma o card da credencial em imagem, para o botão "Baixar Credencial (PNG)" -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+<!-- Botão "← Voltar": mesma pílula flutuante (sticky, com blur) das
+     demais páginas internas — ver .pagina-voltar-bar / .btn-voltar-limpo
+     em css/styles.css -->
+<div class="pagina-voltar-bar">
+  <a class="btn-voltar-limpo" href="index.html">← Voltar</a>
+</div>
+
+<!-- ===================== CONSULTAR CREDENCIAL ===================== -->
+<section id="buscar" style="background:var(--branco); min-height:100vh;">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72" overflow="visible">
+      <path id="arcBuscar" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcBuscar" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
+    </svg>
+    <h1 class="heading">Minha credencial</h1>
+    <p class="sub">Consulte sua credencial ou transfira seu ingresso para outra pessoa.</p>
+
+    <!-- A página principal mostra só os 2 botões — os campos de
+         busca foram para dentro do #modalConsulta logo abaixo. -->
+    <div class="form-card" id="formBusca">
+      <button type="button" class="btn btn-primary" id="btnAbrirConsulta" style="width:100%; text-align:center;">Consultar Credencial</button>
+      <button type="button" class="btn btn-primary" id="btnAbrirTransferencia" style="width:100%; text-align:center; margin-top:10px;">Transferir Ingresso</button>
+    </div>
+
+    <!-- Modal de CONSULTA: nome completo + e-mail + PIN, os 3 juntos
+         — a RPC buscar_credencial_individual exige os três campos
+         numa única chamada, sem etapa intermediária. Aberto pelo
+         botão "Consultar Credencial" da página principal; fecha
+         sozinho assim que a busca encontra um resultado (o
+         resultado aparece na página, fora do modal). -->
+    <div class="modal-overlay" id="modalConsulta">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Consultar credencial</h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalConsulta" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label for="campoBuscaNome">Nome completo</label>
+            <input id="campoBuscaNome" placeholder="Seu nome completo" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="campoBuscaEmail">E-mail</label>
+            <input id="campoBuscaEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="campoBuscaPin">PIN de segurança (4 dígitos)</label>
+            <input id="campoBuscaPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+          </div>
+
+          <button type="button" class="btn btn-primary" id="btnBuscarCredencial" style="width:100%; text-align:center;">Consultar Credencial</button>
+
+          <!-- Mensagens de erro (nada encontrado, falha na busca etc.) -->
+          <p id="erroBuscaCredencial" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+
+          <!-- Aviso de bloqueio temporário por excesso de tentativas
+               incorretas — estrutura visual pronta; js/buscar.js
+               controla quando aparece, com base no contador salvo em
+               localStorage. -->
+          <div class="bloqueio-aviso" id="bloqueioAviso" style="display:none;">
+            <strong>Muitas tentativas incorretas.</strong>
+            <span id="bloqueioAvisoTexto"> Tente novamente em alguns minutos.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de seleção de INGRESSO: aparece quando a mesma pessoa
+         tem mais de uma inscrição (ex.: comprou Sexta e Sábado
+         separados). Abre/fecha via classe "aberto" — controlado
+         pelo js/buscar.js. -->
+    <div class="modal-overlay modal-selecao-overlay" id="modalSelecaoIngressos">
+      <div class="modal-box modal-selecao-box">
+        <div class="modal-header">
+          <h3>Selecione o ingresso</h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalSelecaoIngressos" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+          <div id="seletorIngressos" style="display:flex; flex-direction:column; gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de TRANSFERÊNCIA DE INGRESSO (multi-etapas): reaproveita
+         o mesmo .modal-overlay/.modal-box (fundo escuro, blur,
+         responsivo) do resto do projeto. As 4 etapas são divs dentro
+         do mesmo modal, mostradas/escondidas por js/buscar.js — só
+         uma fica visível por vez. -->
+    <div class="modal-overlay" id="modalTransferencia">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3>Transferir ingresso</h3>
+          <button type="button" class="modal-fechar" id="btnFecharModalTransferencia" aria-label="Fechar">×</button>
+        </div>
+        <div class="modal-body">
+
+          <!-- ETAPA 1: identificação do titular atual -->
+          <div id="transferenciaEtapa1">
+            <p style="font-size:13px; color:#555; margin:0 0 14px;">Informe os dados de quem já possui o ingresso hoje.</p>
+            <div class="field">
+              <label for="transfNome">Nome completo</label>
+              <input id="transfNome" placeholder="Seu nome completo" autocomplete="name" />
+            </div>
+            <div class="field">
+              <label for="transfEmail">E-mail</label>
+              <input id="transfEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+            </div>
+            <div class="field">
+              <label for="transfPin">PIN de segurança (4 dígitos)</label>
+              <input id="transfPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+            </div>
+
+            <!-- Só aparece quando a pessoa tem mais de um ingresso
+                 aprovado — um card por ingresso, para ela escolher
+                 qual transferir. -->
+            <div id="transferenciaSeletorIngressos" style="display:none; flex-direction:column; gap:10px; margin:14px 0;"></div>
+
+            <button type="button" class="btn btn-primary" id="btnEnviarCodigoTransferencia" style="width:100%; text-align:center;">Enviar Código de Verificação</button>
+            <p id="erroTransferenciaEtapa1" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+          </div>
+
+          <!-- ETAPA 2: validação do código OTP -->
+          <div id="transferenciaEtapa2" style="display:none;">
+            <p style="font-size:13px; color:#555; margin:0 0 14px;">
+              Enviamos um código de 6 dígitos para <strong id="transferenciaEmailDestino"></strong>. Digite-o abaixo para continuar.
+            </p>
+            <div class="field">
+              <label for="transfCodigoOtp">Código de verificação</label>
+              <input id="transfCodigoOtp" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="off" />
+            </div>
+            <button type="button" class="btn btn-primary" id="btnValidarCodigoTransferencia" style="width:100%; text-align:center;">Validar Código</button>
+            <p id="erroTransferenciaEtapa2" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+            <button type="button" class="resumo-voltar" id="btnVoltarEtapa1Transferencia" style="margin-top:14px;">← Voltar</button>
+          </div>
+
+          <!-- ETAPA 3: dados do novo titular -->
+          <div id="transferenciaEtapa3" style="display:none;">
+            <p style="font-size:13px; color:#555; margin:0 0 14px;">Informe os dados de quem vai receber o ingresso.</p>
+            <div class="field">
+              <label for="transfNovoNome">Nome completo</label>
+              <input id="transfNovoNome" placeholder="Nome completo do novo titular" autocomplete="name" />
+            </div>
+            <div class="field">
+              <label for="transfNovoEmail">Novo e-mail</label>
+              <input id="transfNovoEmail" type="email" placeholder="novo@email.com" autocomplete="email" />
+            </div>
+            <div class="field">
+              <label for="transfNovoTelefone">Novo telefone</label>
+              <input id="transfNovoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
+            </div>
+            <div class="field">
+              <label for="transfNovoPin">Novo PIN de segurança (4 dígitos)</label>
+              <input id="transfNovoPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+            </div>
+            <button type="button" class="btn btn-primary" id="btnConfirmarTransferencia" style="width:100%; text-align:center;">Confirmar Transferência</button>
+            <p id="erroTransferenciaEtapa3" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+          </div>
+
+          <!-- ETAPA 4: conclusão -->
+          <div id="transferenciaEtapa4" style="display:none; text-align:center;">
+            <div style="font-size:36px; margin-bottom:10px;">✅</div>
+            <p id="transferenciaMensagemSucesso" style="font-size:14px; color:#333; line-height:1.6;"></p>
+            <button type="button" class="btn btn-primary" id="btnConcluirTransferencia" style="width:100%; text-align:center; margin-top:14px;">Concluir</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- Container onde js/buscar.js renderiza o resultado da busca -->
+    <div id="resultadoConsulta" style="display:none; margin-top:24px;">
+
+      <!-- Estado: pagamento ainda em análise -->
+      <div class="form-card" id="resultadoPendente" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="pendenteNome"></span>!</h2>
+        <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Sua inscrição (<span id="pendenteCombo"></span>) ainda está em análise. Assim que o pagamento for confirmado, sua credencial com QR code aparecerá aqui, nesta mesma consulta.
+        </p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:13px; color:#777; margin-top:16px;">Código: <span id="pendenteCodigo"></span></p>
+      </div>
+
+      <!-- Estado: pagamento recusado -->
+      <div class="form-card" id="resultadoRecusado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">⚠️</div>
+        <h2 class="heading" style="margin:0 0 10px;">Olá, <span id="recusadoNome"></span></h2>
+        <span class="badge fail" style="font-size:12px; padding:7px 16px;">Pagamento não confirmado</span>
+        <p style="color:#555; font-size:14px; line-height:1.6; max-width:380px; margin:18px auto 0;">
+          Não conseguimos validar o comprovante enviado para a inscrição <span id="recusadoCodigo"></span>. Entre em contato pelo e-mail ou WhatsApp no rodapé para regularizar.
+        </p>
+      </div>
+
+      <!-- Estado: nada encontrado -->
+      <div class="form-card" id="resultadoNaoEncontrado" style="display:none; text-align:center;">
+        <div style="font-size:36px; margin-bottom:10px;">🔍</div>
+        <h2 class="heading" style="margin:0 0 8px;">Nada encontrado</h2>
+        <p style="color:#555; font-size:14px; max-width:340px; margin:0 auto;">
+          Não encontramos nenhuma inscrição com esse e-mail ou código. Confira se digitou corretamente.
+        </p>
+      </div>
+
+      <!-- Estado: aprovado — Credencial / Passaporte de entrada -->
+      <div id="resultadoAprovado" style="display:none;">
+
+        <!-- #credencialContainer exatamente o que vira a imagem PNG baixada -->
+      <div id="credencialContainer" style="background:#0f281e; border-radius:20px; padding:0; overflow:hidden; max-width:380px; min-height:520px; margin:0 auto; box-shadow:0 20px 40px rgba(0,0,0,.3); display:flex; flex-direction:column; justify-content:space-between;">
+
+        <!-- Cabeçalho da credencial -->
+        <div style="padding:24px 24px 18px; text-align:center; border-bottom:1px solid rgba(245,240,235,.15);">
+          <p style="margin:0; font-family:'Poppins',sans-serif; font-weight:700; font-size:12px; letter-spacing:3px; text-transform:uppercase; color:#f5f0eb;">CONFERÊNCIA FREEDOM</p>
+        </div>
+
+        <!-- Corpo: nome, status e QR code -->
+        <div style="padding:30px 24px 36px; text-align:center; flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+          
+          <p id="credencialNome" style="margin:0 0 8px; font-family:'Poppins',sans-serif; font-weight:800; font-size:22px; color:#f5f0eb; line-height:1.25; max-width:300px; word-wrap:break-word;"></p>
+
+          <span class="badge ok" style="display:none;">Passaporte Confirmado</span>
+
+          <p id="credencialTipo" style="margin:8px 0 0; font-family:'Inter',sans-serif; font-size:13px; color:#C9D6CE;"></p>
+
+          <!-- Container do QR code -->
+          <div style="background:#f5f0eb; border-radius:16px; padding:20px; display:inline-block; margin-top:24px; box-shadow:0 8px 20px rgba(0,0,0,.2);">
+            <div id="credencialQrcodeBox"></div>
+          </div>
+
+          <p style="margin:20px 0 0; font-family:'IBM Plex Mono',monospace; font-size:13px; letter-spacing:1.5px; color:#f5f0eb;" id="credencialCodigo"></p>
+        </div>
+
+      </div>
+
+      <!-- Botão de download (FORA do card) -->
+      <div style="max-width:380px; margin:20px auto 0;">
+        <button type="button" class="btn-baixar-credencial" id="btnBaixarCredencial">↓ Baixar Credencial (PNG)</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 1) conexão com o Supabase; 2) lógica da consulta/credencial -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js?v=2.0.0"></script>
+<script src="js/buscar.js?v=4.0.0"></script>
+</body>
+</html>

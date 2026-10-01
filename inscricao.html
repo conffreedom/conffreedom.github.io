@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<!-- Prevenção contra cache do navegador: garante que o inscrito -->
+<!-- sempre veja a versão mais recente do formulário. -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+
+<title>Inscrição — Freedom Conf. 2026</title>
+<meta name="description" content="Faça sua inscrição na Freedom Conf. 2026: escolha seu ingresso, pague via Pix e envie o comprovante." />
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bevan&family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=Lora:ital@1&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Estilos centralizados do projeto (mesmo arquivo da Landing Page e do admin) -->
+<link rel="stylesheet" href="css/styles.css?v=8">
+
+</head>
+<body>
+
+<!-- Botão "← Voltar": pílula flutuante (sticky, com blur) — ver
+     .pagina-voltar-bar / .btn-voltar-limpo em css/styles.css -->
+<div class="pagina-voltar-bar">
+  <a class="btn-voltar-limpo" href="index.html">← Voltar</a>
+</div>
+
+<!-- ===================== INSCRIÇÃO (3 passos isolados) ===================== -->
+<section id="inscricao">
+  <div class="insc-wrap">
+    <svg class="arco" width="300" height="72" viewBox="0 0 300 72" overflow="visible">
+      <path id="arcInsc" d="M 8 64 Q 150 -16 292 64" fill="transparent" />
+      <text font-size="30"><textPath href="#arcInsc" startOffset="50%" text-anchor="middle">FREEDOM CONF</textPath></text>
+    </svg>
+
+    <!-- ============ PASSO 1 — Dados pessoais & seleção de ingresso ============ -->
+    <div class="form-card" id="formInscricao">
+      <h1 class="heading">Passo 1 de 3 — Seus dados</h1>
+      <p class="sub">Escolha o ingresso e informe seus dados. O pagamento via Pix é no próximo passo.</p>
+
+      <div class="combos" id="combos">
+        <div class="combo" data-id="SEXTA" data-preco="10.00">
+          <span class="badge-check"></span>
+          <div class="dia">Sexta-feira</div>
+          <span class="detalhe">30/10 · a partir das 20h</span>
+          <div class="preco"><span class="preco-cifrao">R$</span><span class="preco-valor">10,00<small>/pessoa</small></span></div>
+        </div>
+        <div class="combo" data-id="SABADO" data-preco="10.00">
+          <span class="badge-check"></span>
+          <div class="dia">Sábado</div>
+          <span class="detalhe">31/10 · a partir das 14h</span>
+          <div class="preco"><span class="preco-cifrao">R$</span><span class="preco-valor">10,00<small>/pessoa</small></span></div>
+        </div>
+        <div class="combo" data-id="COMBO" data-preco="10.00" data-selected="true">
+          <span class="badge-check"></span>
+          <div class="dia">Sexta + Sábado</div>
+          <span class="detalhe">Os dois dias do evento</span>
+          <div class="preco"><span class="preco-cifrao">R$</span><span class="preco-valor">10,00<small>/pessoa</small></span></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="campoNome">Nome completo</label>
+        <input id="campoNome" placeholder="Seu nome" autocomplete="name" />
+      </div>
+      <div class="field">
+        <label for="campoEmail">E-mail</label>
+        <input id="campoEmail" type="email" placeholder="voce@email.com" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label for="campoTelefone">Telefone</label>
+        <input id="campoTelefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" maxlength="15" />
+      </div>
+
+      <a class="btn btn-primary" id="btnIrPagamento">Ir para Pagamento</a>
+      <p id="erroInscricao" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+
+      <!-- Aviso customizado de inscrição duplicada — substitui o
+           alert() nativo. Mostrado/escondido por js/inscricao.js;
+           some sozinho se a pessoa trocar de ingresso, ou pode ser
+           fechado manualmente pelo "×". -->
+      <div class="aviso-duplicidade" id="avisoDuplicidade" style="display:none;">
+        <span class="aviso-duplicidade-icone" aria-hidden="true">⚠️</span>
+        <div class="aviso-duplicidade-texto">
+          <strong>Inscrição já existente</strong>
+          <p id="avisoDuplicidadeTexto"></p>
+        </div>
+        <button type="button" class="aviso-duplicidade-fechar" id="btnFecharAvisoDuplicidade" aria-label="Fechar aviso">×</button>
+      </div>
+    </div>
+
+    <!-- ============ PASSO 2 — Pagamento Pix (novo passo isolado) ============ -->
+    <div class="form-card" id="pagamentoPix" style="display:none;">
+      <button type="button" class="resumo-voltar" id="btnVoltarPagamento">← Voltar</button>
+      <h2 class="heading" style="margin-top:0;">Passo 2 de 3 — Pagamento via Pix</h2>
+      <p class="sub">Pague o valor abaixo com a chave Pix e anexe o comprovante.</p>
+
+      <div class="total-row">
+        <span>Total a pagar<br><span class="pay-icons">
+          <span class="pay-chip">PIX</span>
+        </span></span>
+        <strong id="totalValor">R$ 10,00</strong>
+      </div>
+
+      <!-- Chave Pix exibida para o participante pagar antes de anexar o comprovante -->
+      <div class="pix-key-box">
+        <p class="pix-key-label">Pague com a chave Pix (e-mail)</p>
+        <div class="pix-key-row">
+          <p class="pix-key-valor" id="chavePixTexto">pixpenielguaruja@hotmail.com</p>
+          <button type="button" class="btn-copiar-pix" id="btnCopiarPix">Copiar Chave Pix</button>
+        </div>
+        <!-- Titular da chave Pix — preenchido por js/inscricao.js a partir
+             de config.nome_titular_pix (RPC obter_configuracoes_checkout).
+             A linha inteira fica escondida (display:none) até o JS ter
+             um nome para mostrar — se a RPC falhar ou não devolver o
+             titular, nada aparece (nem o rótulo "Titular:" solto). -->
+        <p style="display:none; margin:8px 0 0; font-size:12.5px; color:#666;">
+          Titular: <strong id="chavePixTitular"></strong>
+        </p>
+      </div>
+
+      <div class="field">
+        <label for="campoComprovante">Comprovante do Pix (imagem ou PDF)</label>
+        <input id="campoComprovante" type="file" accept="image/*,application/pdf" />
+        <span class="erro-campo" id="erroComprovante" style="display:none;"></span>
+      </div>
+
+      <a class="btn btn-primary" id="btnIrConfirmacao">Avançar para Confirmação</a>
+    </div>
+
+    <!-- ============ PASSO 3 — Confirmação final & PIN ============ -->
+    <div class="form-card resumo-pedido" id="resumoPedido" style="display:none;">
+      <button type="button" class="resumo-voltar" id="btnVoltarResumo">← Voltar</button>
+      <h2>Passo 3 de 3 — Confirme sua inscrição</h2>
+      <div class="resumo-linhas">
+        <div class="resumo-linha"><span>Nome</span><b id="resumoNomeTxt"></b></div>
+        <div class="resumo-linha"><span>Opção</span><b id="resumoComboTxt"></b></div>
+        <div class="resumo-linha"><span>Comprovante</span><b id="resumoComprovanteTxt">anexado</b></div>
+        <div class="resumo-linha destaque"><span>Total pago via Pix</span><b id="resumoValorTxt"></b></div>
+      </div>
+
+      <!-- Criação do PIN de segurança: último dado antes de gravar
+           a inscrição de fato. -->
+      <div style="border-top:1px solid var(--cinza); padding-top:18px; margin-bottom:22px;">
+        <p style="margin:0 0 14px; font-size:13.5px; color:#555; line-height:1.6;">
+          Crie um PIN de 4 dígitos para consultar sua credencial posteriormente.
+        </p>
+        <div class="field">
+          <label for="campoPin">Criar PIN de 4 dígitos</label>
+          <input id="campoPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+        </div>
+        <div class="field" style="margin-bottom:0;">
+          <label for="campoPinConfirma">Confirmar PIN</label>
+          <input id="campoPinConfirma" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="••••" autocomplete="off" />
+        </div>
+      </div>
+
+      <button type="button" class="btn-pix" id="btnConfirmarInscricao">💠 Finalizar Inscrição</button>
+      <p id="erroResumo" style="color:#A13B2C; font-size:13px; margin-top:12px; display:none;"></p>
+    </div>
+
+    <!-- Passo 4 (fora da contagem "3 passos" pedida): sucesso —
+         pagamento ainda pendente de conferência manual -->
+    <div class="form-card" id="telaSucesso" style="display:none; text-align:center;">
+      <div style="font-size:36px; margin-bottom:10px;">⏳</div>
+      <h2 class="heading" style="margin:0 0 10px;">Inscrição enviada!</h2>
+      <span class="status-pendente-badge">Status: Aguardando Validação do Pix</span>
+
+      <p style="color:#555; font-size:14.5px; line-height:1.6; max-width:400px; margin:18px auto 22px;">
+        Recebemos os seus dados e o comprovante do Pix, <span id="nomeSucesso"></span>. Nossa equipe confere os pagamentos em até 24 horas.
+      </p>
+
+      <div style="background:var(--cinza); border-radius:14px; padding:24px; display:inline-block;">
+        <div id="comboSucesso" style="font-family:'Poppins',sans-serif; font-weight:700; font-size:13px; color:var(--verde); text-transform:uppercase; letter-spacing:1px; margin-bottom:14px;"></div>
+        <p style="font-size:12px; color:#777; margin:0 0 4px;">Código da inscrição</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; color:var(--preto); letter-spacing:1px; margin:0;" id="codigoSucesso"></p>
+        <p style="font-size:12px; color:#777; margin:14px 0 4px;">Seu PIN de segurança</p>
+        <p style="font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; color:var(--preto); letter-spacing:4px; margin:0;" id="pinSucesso"></p>
+      </div>
+
+      <p style="color:#555; font-size:13.5px; max-width:380px; margin:22px auto 0; line-height:1.6;">
+        Guarde este código para referência. Assim que o pagamento for aprovado, o QR code de entrada estará disponível na consulta do participante.
+      </p>
+      <a class="btn-line" style="display:inline-block; margin-top:16px; text-decoration:none;" href="buscar.html">Ver minha credencial (QR Code) →</a>
+      <button type="button" class="btn-line" style="margin-top:16px;" id="btnNovaInscricao">Fazer outra inscrição</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FAQ / DÚVIDAS FREQUENTES ===================== -->
+<section class="faq-section" id="faq">
+  <div class="faq-wrap">
+    <h2 class="heading">Dúvidas frequentes</h2>
+    <p class="sub">Ainda com alguma pergunta? Aqui estão as respostas mais comuns.</p>
+
+    <div class="faq-grid">
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Posso comprar meu ingresso na hora, na portaria?"
+           data-resposta="Recomendamos garantir sua inscrição antes pelo site, já que as vagas são limitadas. Caso ainda restem vagas no dia do evento, a equipe pode avaliar inscrições de última hora na portaria — mas isso não é garantido.">
+        <p class="pergunta">Posso comprar na hora, na portaria?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Existe meia-entrada ou desconto?"
+           data-resposta="Os valores exibidos na página de inscrição já são os valores finais para todos os públicos — não trabalhamos com meia-entrada nesta edição.">
+        <p class="pergunta">Existe meia-entrada?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Posso pagar com cartão em vez de Pix?"
+           data-resposta="No momento, o pagamento é feito exclusivamente via Pix, usando a chave exibida no formulário de inscrição. Depois de pagar, é só anexar o comprovante para concluir.">
+        <p class="pergunta">Posso pagar com cartão?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Vou receber alguma confirmação depois de me inscrever?"
+           data-resposta="Depois de enviar o comprovante, sua inscrição fica com o status 'Aguardando validação do Pix'. A equipe confere os pagamentos em até 24 horas; assim que for aprovado, seu QR code de entrada fica disponível na página de consulta da credencial.">
+        <p class="pergunta">Vou receber confirmação?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="Posso transferir meu ingresso para outra pessoa?"
+           data-resposta="Sim. Basta que a pessoa que vai comparecer entre em contato pelos canais do rodapé informando o código da inscrição, para atualizarmos o nome no cadastro antes do evento.">
+        <p class="pergunta">Posso transferir meu ingresso?</p>
+      </div>
+
+      <div class="faq-card" tabindex="0" role="button"
+           data-pergunta="E se meu comprovante for recusado pela equipe?"
+           data-resposta="Se a equipe não conseguir validar o comprovante enviado (por exemplo, valor ou dados divergentes), sua inscrição aparece como 'Pagamento não confirmado' na consulta. Nesse caso, entre em contato pelos canais do rodapé com o código da inscrição para regularizar.">
+        <p class="pergunta">E se o comprovante for recusado?</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Modal genérico (reaproveitado por outras telas do projeto) usado
+     aqui para exibir a resposta completa de cada card do FAQ -->
+<div class="modal-overlay overlay-neutro" id="modalFaq">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalFaqTitulo"></h3>
+      <button type="button" class="modal-fechar" id="btnFecharModalFaq" aria-label="Fechar">×</button>
+    </div>
+    <div class="modal-body" id="modalFaqCorpo"></div>
+  </div>
+</div>
+
+<!-- 1) conexão com o Supabase; 2) lógica do formulário de inscrição -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-client.js?v=2.0.0"></script>
+<script src="js/inscricao.js?v=5.0.0"></script>
+</body>
+</html>
