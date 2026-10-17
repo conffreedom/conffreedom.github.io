@@ -284,11 +284,27 @@ document.addEventListener('DOMContentLoaded', function () {
     resultadoConsulta.style.display = 'block';
   }
 
- function gerarQrCodeCredencial(codigo) {
+ function gerarQrCodeCredencial(inscricao) {
     if (!credencialQrcodeBox || typeof QRCode === 'undefined') return;
     credencialQrcodeBox.innerHTML = '';
+
+    // Log para depuração: abra o Console do navegador (F12) para ver a estrutura do objeto
+    console.log('[DEBUG] Dados da inscrição recebidos:', inscricao);
+
+    // Tenta pegar o nome completo de diferentes propriedades possíveis
+    const nomeCompleto = (typeof inscricao === 'object' && inscricao !== null)
+      ? (inscricao.nome_completo || inscricao.nome || inscricao.p_nome || '')
+      : '';
+
+    const codigo = (typeof inscricao === 'object' && inscricao !== null)
+      ? (inscricao.codigo_ingresso || inscricao.codigo || '')
+      : (inscricao || '');
+
+    // Conteúdo final gravado no QR Code
+    const payloadQrCode = `Nome: ${nomeCompleto.trim()}\nIngresso: ${codigo.trim()}`;
+
     new QRCode(credencialQrcodeBox, {
-      text: codigo,
+      text: payloadQrCode,
       width: 160,
       height: 160,
       colorDark: '#0f281e',
@@ -397,7 +413,7 @@ document.addEventListener('DOMContentLoaded', function () {
       credencialNome.textContent = inscricao.nome_completo;
       credencialTipo.textContent = NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso;
       credencialCodigo.textContent = inscricao.codigo_ingresso;
-      gerarQrCodeCredencial(inscricao.codigo_ingresso);
+      gerarQrCodeCredencial(inscricao);
       mostrarEstado(resultadoAprovado);
     } else if (inscricao.status_pagamento === 'recusado') {
       recusadoNome.textContent = (inscricao.nome_completo || '').split(' ')[0];
@@ -583,35 +599,40 @@ document.addEventListener('DOMContentLoaded', function () {
      - iniciar_transferencia_ingresso(p_nome, p_email, p_pin): faz o
        trabalho da Etapa 1 inteiro num passo só — identifica o
        titular, já valida a elegibilidade (ex.: recusa com erro
-       próprio um ingresso "pendente") e dispara o código de
-       verificação por e-mail. Devolve um array com os ingressos
-       elegíveis; se vier mais de um, mostramos os cards, e ESCOLHER
-       um deles não faz nova chamada nenhuma — o código já foi
-       enviado, só falta lembrar qual "id" vai para a Etapa 3.
-     - validar_codigo_transferencia(p_email, p_codigo): chamada no
-       clique de "Validar Código" (Etapa 2) — só avança para a
-       Etapa 3 se devolver um valor "truthy" (assumi um booleano).
-       Se devolver false/vazio, ou der erro, a pessoa fica na Etapa
-       2 com o aviso correspondente.
-     - concluir_transferencia_ingresso(p_id_inscricao, p_email_antigo,
-       p_codigo, p_novo_nome, p_novo_email, p_novo_telefone,
-       p_novo_pin): grava os dados do novo titular e efetiva a troca,
-       na Etapa 3. Como o código já foi validado na Etapa 2, aqui ele
-       só precisa ser reenviado para a RPC confirmar contra o mesmo
-       valor (ou simplesmente para registro) — se a sua
-       implementação preferir não validar de novo aqui, não muda
-       nada do lado do JS.
+       próprio um ingresso "pendente"), gera o código de 6 dígitos e
+       dispara o e-mail de verificação (tudo dentro do banco, via
+       pg_net + Edge Function). Devolve APENAS um array com os
+       ingressos elegíveis (id, tipo_ingresso, created_at) — sem o
+       código. Se vier mais de um, mostramos os cards, e ESCOLHER um
+       deles não faz nova chamada nenhuma — o e-mail já foi enviado,
+       só falta lembrar qual "id" vai para a Etapa 3.
+     - validar_codigo_transferencia(p_codigo, p_email) — nesta ordem
+       de parâmetros. Chamada no clique de "Validar Código" (Etapa
+       2). Devolve jsonb; respostaIndicaCodigoValido() aceita
+       booleano puro, { sucesso: true }, { valido: true },
+       { valid: true }, { success: true }, ou qualquer objeto
+       não-nulo sem nenhum desses campos (nesse caso a própria
+       presença de dados já conta como válido). Se devolver
+       false/null/vazio, ou der erro, a pessoa fica na Etapa 2 com o
+       aviso correspondente.
+     - transferir_ingresso(p_id_inscricao, p_email_antigo, p_codigo,
+       p_novo_nome, p_novo_email, p_novo_telefone, p_novo_pin):
+       grava os dados do novo titular e efetiva a troca, na Etapa 3
+       (nome real da RPC no Supabase).
 
-     ATENÇÃO — SUPOSIÇÕES A CONFIRMAR:
-     1) validar_codigo_transferencia devolve um booleano (true =
-        código certo). Se devolver outra coisa (ex.: um objeto ou uma
-        contagem), ajuste só o "if (!data)" dentro de
-        validarCodigoEtapa2.
-     2) Cada item do array devolvido por iniciar_transferencia_ingresso
-        tem um campo "id" (o id da linha em "inscricoes") — é o que
-        uso como p_id_inscricao na etapa final. Se o campo tiver
-        outro nome (ex.: "id_inscricao"), troque "ingressoParaTransferir.id"
-        por esse nome dentro de confirmarTransferencia.
+     Envio do e-mail (Etapa 1): feito pelo PRÓPRIO BANCO — a RPC
+     iniciar_transferencia_ingresso gera o código de 6 dígitos e
+     dispara o e-mail via Edge Function (pg_net), tudo dentro do
+     Postgres. O retorno traz só o array de ingressos (id,
+     tipo_ingresso, created_at): o código NUNCA chega ao navegador,
+     então o front-end não extrai nem envia nada — só avança.
+
+     ATENÇÃO — SUPOSIÇÃO AINDA EM ABERTO: cada item do array
+     devolvido por iniciar_transferencia_ingresso tem um campo "id"
+     (o id da linha em "inscricoes") — é o que uso como
+     p_id_inscricao na etapa final. Se o campo tiver outro nome
+     (ex.: "id_inscricao"), troque "ingressoParaTransferir.id" por
+     esse nome dentro de confirmarTransferencia.
      ============================================================ */
 
   const btnAbrirTransferencia = document.getElementById('btnAbrirTransferencia');
@@ -800,8 +821,10 @@ document.addEventListener('DOMContentLoaded', function () {
       card.appendChild(tipo);
       card.appendChild(dataInscricao);
 
-      // Sem chamada ao Supabase aqui — o código já foi enviado
-      // junto com a busca; só falta lembrar QUAL ingresso escolheu.
+      // O e-mail com o código já foi enviado pelo próprio banco, dentro
+      // da RPC iniciar_transferencia_ingresso, ANTES deste seletor
+      // aparecer — escolher um card aqui só lembra QUAL ingresso, sem
+      // nenhuma chamada nova.
       card.addEventListener('click', function () {
         transferenciaSeletorIngressos.style.display = 'none';
         selecionarIngressoParaTransferir(inscricao, email);
@@ -870,6 +893,11 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
+      // O código de 6 dígitos NÃO vem no retorno (só id,
+      // tipo_ingresso e created_at de cada ingresso) e o e-mail já
+      // foi enviado pelo próprio banco, dentro da RPC — nada a
+      // extrair nem a disparar aqui. Se chegou até este ponto, a RPC
+      // deu certo: o e-mail está a caminho.
       if (data.length === 1) {
         selecionarIngressoParaTransferir(data[0], email);
       } else {
@@ -893,6 +921,29 @@ document.addEventListener('DOMContentLoaded', function () {
      acontece dentro de transferir_ingresso, na Etapa 3)
      ------------------------------------------------------------ */
 
+  // validar_codigo_transferencia devolve jsonb — pode vir como
+  // booleano puro (true/false), como objeto ({ sucesso: true },
+  // { valido: true }, { valid: true }, { success: true }), ou só um
+  // objeto não-nulo sem nenhum desses campos (nesse caso, a própria
+  // presença de dados já indica que o código bateu — a RPC não
+  // devolveria nada específico para um código errado). Cobre todos
+  // esses formatos num só lugar.
+  function respostaIndicaCodigoValido(data) {
+    if (data === true) return true;
+    if (data === false || data === null || data === undefined) return false;
+
+    if (typeof data === 'object') {
+      if ('sucesso' in data) return Boolean(data.sucesso);
+      if ('valido' in data) return Boolean(data.valido);
+      if ('valid' in data) return Boolean(data.valid);
+      if ('success' in data) return Boolean(data.success);
+      // Objeto não-nulo sem campo explícito de sucesso/falha.
+      return true;
+    }
+
+    return Boolean(data);
+  }
+
   async function validarCodigoEtapa2() {
     esconderErro(erroTransferenciaEtapa2);
     const codigo = transfCodigoOtp.value.trim();
@@ -914,8 +965,8 @@ document.addEventListener('DOMContentLoaded', function () {
       // acima, mas só essa RPC sabe se é realmente o código certo,
       // ainda válido, para este e-mail.
       const { data, error } = await window.supabaseClient.rpc('validar_codigo_transferencia', {
-        p_email: email,
         p_codigo: codigo,
+        p_email: email,
       });
 
       if (error) {
@@ -926,7 +977,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      if (!data) {
+      if (!respostaIndicaCodigoValido(data)) {
         mostrarErro(erroTransferenciaEtapa2, 'Código incorreto ou expirado. Confira e tente novamente.');
         transfCodigoOtp.focus();
         return;
@@ -995,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', function () {
     btnConfirmarTransferencia.textContent = 'Transferindo...';
 
     try {
-      const { data, error } = await window.supabaseClient.rpc('concluir_transferencia_ingresso', {
+      const { data, error } = await window.supabaseClient.rpc('transferir_ingresso', {
         p_id_inscricao: ingressoParaTransferir.id,
         p_email_antigo: transfEmail.value.trim(),
         p_codigo: codigoVerificacaoTransferencia,
