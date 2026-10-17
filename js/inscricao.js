@@ -51,6 +51,11 @@
    3) checar_inscricao_duplicada — chamada no "Ir para Pagamento"
       (Passo 1 → 2), com p_nome, p_email e p_tipo_ingresso.
 
+   TABELA (não é RPC): public.inscricoes_rascunho — rascunhos de
+   inscrição abandonados (seção 6.1). Gravada em background ao sair
+   do Passo 1 e apagada quando a inscrição oficial é concluída.
+   Falhas nessa tabela NUNCA afetam o fluxo visível do usuário.
+
    ATENÇÃO — elementos de exibição: os preços aparecem nos cards de
    ingresso (.combo[data-id="SEXTA|SABADO|COMBO"] .preco) e a chave
    Pix em #chavePixTexto — os mesmos elementos de sempre. O titular
@@ -573,6 +578,7 @@ document.addEventListener('DOMContentLoaded', function () {
       const nomeParaChecagem = campoNome.value.trim();
       const emailParaChecagem = campoEmail.value.trim();
       const tipoIngressoParaChecagem = estadoInscricao.tipoIngresso;
+      const telefoneParaRascunho = campoTelefone.value.trim(); // capturado antes do await
 
       btnIrPagamento.disabled = true;
       const textoOriginalBotaoPagamento = btnIrPagamento.textContent;
@@ -595,6 +601,17 @@ document.addEventListener('DOMContentLoaded', function () {
         btnIrPagamento.disabled = false;
         btnIrPagamento.textContent = textoOriginalBotaoPagamento;
       }
+
+      // >>> ADIÇÃO: RASCUNHO SILENCIOSO EM BACKGROUND <<<
+      // Só chega aqui quem NÃO foi barrado pela duplicidade (esse caso
+      // dá "return" acima). Sem "await": não atrasa nem trava nada, e
+      // qualquer falha é tratada dentro da função.
+      salvarRascunhoSilencioso({
+        nome: nomeParaChecagem,
+        email: emailParaChecagem,
+        telefone: telefoneParaRascunho,
+        tipoIngresso: tipoIngressoParaChecagem,
+      });
 
       esconderTodasAsTelas();
       telaPagamentoPix.style.display = 'block';
@@ -653,6 +670,106 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     return Boolean(data);
+  }
+
+  /* ----------------------------------------------------------
+     6.1) RASCUNHO DE INSCRIÇÃO (salvamento silencioso em background)
+     ---------------------------------------------------------- */
+
+  // Guarda em public.inscricoes_rascunho quem preencheu o Passo 1 e
+  // seguiu para o pagamento, para rastrear inscrições abandonadas.
+  // Regra de ouro: NADA aqui pode aparecer para o usuário nem
+  // atrasar/travar a navegação. Por isso:
+  //   • as funções nunca lançam erro e quem as chama NÃO usa "await";
+  //   • o supabase-js não lança exceção em erro de API (RLS, constraint,
+  //     etc.): ele devolve { error }. Por isso o "error" é verificado
+  //     explicitamente — só o try/catch não bastaria;
+  //   • todas as operações passam por UMA fila (filaRascunho), então
+  //     "apagar" nunca corre na frente de um "inserir" ainda em voo
+  //     (rede lenta), o que deixaria um rascunho órfão no banco.
+  let filaRascunho = Promise.resolve();
+
+  // Último rascunho gravado COM SUCESSO nesta página. Serve para:
+  // (a) não inserir linhas repetidas se a pessoa voltar e avançar de
+  // novo sem mudar nada; (b) substituir o rascunho anterior se ela
+  // corrigir nome, e-mail, telefone ou ingresso (em vez de acumular
+  // linhas, ou deixar órfão o rascunho com o e-mail errado).
+  let rascunhoSalvo = null;
+
+  // E-mail em minúsculas e sem espaços, tanto ao gravar quanto ao
+  // apagar — assim "Ana@x.com" e "ana@x.com" são o mesmo rascunho.
+  function normalizarEmailRascunho(email) {
+    return String(email || '').trim().toLowerCase();
+  }
+
+  function enfileirarRascunho(tarefa) {
+    filaRascunho = filaRascunho.then(tarefa).catch(function (erro) {
+      console.warn('[inscricao.js] Rascunho em background não afetou o fluxo principal:', erro);
+    });
+    return filaRascunho;
+  }
+
+  async function removerRascunhoNoBanco(email, nome) {
+    let consulta = window.supabaseClient
+      .from('inscricoes_rascunho')
+      .delete()
+      .eq('email', email);
+    // O nome entra no filtro porque o mesmo e-mail pode inscrever
+    // pessoas diferentes (a checagem de duplicidade é por nome + e-mail
+    // + ingresso): limpar só por e-mail apagaria o rascunho de outro
+    // participante que ainda não terminou.
+    if (nome) consulta = consulta.eq('nome_completo', nome);
+    const { error } = await consulta;
+    if (error) throw error;
+  }
+
+  // Chamar SEM await. Recebe os dados já capturados no clique.
+  function salvarRascunhoSilencioso(dados) {
+    return enfileirarRascunho(async function () {
+      if (!window.supabaseClient || !dados) return;
+
+      const novo = {
+        nome_completo: String(dados.nome || '').trim(),
+        email: normalizarEmailRascunho(dados.email),
+        telefone: String(dados.telefone || '').trim(),
+        tipo_ingresso: normalizarTipoIngresso(dados.tipoIngresso) || dados.tipoIngresso,
+      };
+
+      const anterior = rascunhoSalvo;
+      if (anterior) {
+        if (JSON.stringify(anterior) === JSON.stringify(novo)) return;
+        // Dados mudaram: remove o rascunho antigo antes de gravar o novo.
+        rascunhoSalvo = null;
+        try {
+          await removerRascunhoNoBanco(anterior.email, anterior.nome_completo);
+        } catch (erroRemocao) {
+          console.warn('[inscricao.js] Não foi possível remover o rascunho anterior:', erroRemocao);
+        }
+      }
+
+      const { error } = await window.supabaseClient
+        .from('inscricoes_rascunho')
+        .insert([novo]);
+      if (error) throw error;
+
+      rascunhoSalvo = novo;
+    });
+  }
+
+  // Chamar SEM await. "nome" é opcional: sem ele, apaga todos os
+  // rascunhos do e-mail; com ele, só os daquele participante.
+  function limparRascunhoAposConclusao(email, nome) {
+    return enfileirarRascunho(async function () {
+      if (!window.supabaseClient) return;
+      try {
+        await removerRascunhoNoBanco(
+          normalizarEmailRascunho(email),
+          nome ? String(nome).trim() : ''
+        );
+      } finally {
+        rascunhoSalvo = null;
+      }
+    });
   }
 
   /* ----------------------------------------------------------
@@ -846,6 +963,11 @@ document.addEventListener('DOMContentLoaded', function () {
           tipoIngresso: tipoIngressoValidado,
           comprovanteUrl: urlComprovante,
         });
+
+        // >>> ADIÇÃO: LIMPEZA SILENCIOSA DO RASCUNHO <<<
+        // A inscrição oficial já foi gravada. Sem "await" e antes de
+        // mexer na tela: roda mesmo que algo na tela de sucesso falhe.
+        limparRascunhoAposConclusao(email, nomeCompleto);
 
         // Preenche e exibe a tela de sucesso. O pagamento ainda
         // depende de conferência manual — o código e o PIN exibidos
