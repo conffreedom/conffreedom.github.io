@@ -793,7 +793,9 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function atualizarContadoresCheckin() {
-    const aprovados = listaInscricoes.filter(function (i) { return i.status_pagamento === 'aprovado'; });
+    const aprovados = listaInscricoes.filter(function (i) {
+      return normalizarStatusPagamento(i.status_pagamento) === 'aprovado';
+    });
     const feitos = listaInscricoes.filter(function (i) { return i.checkin_realizado; });
     checkinContadorAprovados.textContent = String(aprovados.length);
     checkinContadorFeitos.textContent = String(feitos.length);
@@ -803,6 +805,43 @@ document.addEventListener('DOMContentLoaded', function () {
     checkinResultado.className = 'checkin-resultado ' + tipo; // 'ok' | 'aviso' | 'erro'
     checkinResultadoTitulo.textContent = titulo;
     checkinResultadoDetalhe.textContent = detalhe;
+  }
+
+  // Atualiza os badges de dia SEM nunca derrubar o fluxo: se algo nos
+  // badges falhar, o card de resultado (que já foi desenhado antes)
+  // continua correto na tela.
+  function atualizarBadgesDiasSeguro(inscricao) {
+    try {
+      atualizarBadgesDias(inscricao);
+    } catch (erroBadges) {
+      console.error('[admin.js] Falha ao atualizar os badges de dia:', erroBadges);
+    }
+  }
+
+  // Card amarelo de "check-in já realizado". Função ÚNICA, usada em
+  // todos os caminhos de duplicidade e para qualquer role (admin ou
+  // portaria), para o aviso ser sempre idêntico. O card é desenhado
+  // PRIMEIRO; os badges vêm depois, protegidos.
+  function mostrarAvisoCheckinJaRealizado(inscricao, nomeDia) {
+    mostrarResultadoCheckin(
+      'aviso',
+      'Check-in de ' + nomeDia + ' já foi realizado',
+      'Atenção: o check-in de ' + nomeDia + ' já foi realizado para ' + inscricao.nome_completo + '. Nenhuma alteração foi feita.'
+    );
+    atualizarBadgesDiasSeguro(inscricao);
+  }
+
+  // Põe a versão mais recente da inscrição na cópia local (usada
+  // pelos contadores do dashboard e da portaria).
+  function sincronizarInscricaoLocal(inscricao) {
+    const jaExisteNaLista = listaInscricoes.some(function (i) { return String(i.id) === String(inscricao.id); });
+    if (jaExisteNaLista) {
+      listaInscricoes = listaInscricoes.map(function (i) {
+        return String(i.id) === String(inscricao.id) ? inscricao : i;
+      });
+    } else {
+      listaInscricoes.push(inscricao);
+    }
   }
 
   // Evita que uma segunda leitura (manual ou por câmera) seja
@@ -840,13 +879,15 @@ document.addEventListener('DOMContentLoaded', function () {
         .eq('codigo_ingresso', codigo)
         .maybeSingle();
 
+      if (error) console.error('[admin.js] Erro ao buscar a inscrição pelo código:', error);
+
       if (error || !inscricao) {
         esconderBadgesDias();
         mostrarResultadoCheckin('erro', 'Código não encontrado', 'Confira o código e tente novamente: ' + codigo);
         return;
       }
 
-      if (inscricao.status_pagamento !== 'aprovado') {
+      if (normalizarStatusPagamento(inscricao.status_pagamento) !== 'aprovado') {
         esconderBadgesDias();
         mostrarResultadoCheckin(
           'aviso',
@@ -858,77 +899,114 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const diaAtual = diaOperacaoAtual || detectarDiaOperacaoPadrao();
       const nomeDiaAtual = diaAtual === 'sexta' ? 'Sexta-feira' : 'Sábado';
+      const chaveDia = 'checkin_' + diaAtual;
       const aplicaveisIngresso = diasDoIngresso(inscricao.tipo_ingresso);
 
       // O ingresso desta pessoa nem inclui o dia vigente da portaria
       // (ex.: ingresso só de Sábado sendo lido num dia configurado
       // como Sexta) — nunca "empurra" o check-in para outro dia.
       if (!aplicaveisIngresso.includes(diaAtual)) {
-        atualizarBadgesDias(inscricao);
         mostrarResultadoCheckin(
           'aviso',
           'Ingresso não inclui ' + nomeDiaAtual,
           inscricao.nome_completo + ' possui ingresso de ' + (NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso) + ', que não dá acesso a ' + nomeDiaAtual + '. Confira o "Dia vigente da portaria" selecionado.'
         );
+        atualizarBadgesDiasSeguro(inscricao);
         return;
       }
 
-      // TRAVA DE DUPLICIDADE: se o dia vigente já tiver sido
-      // registrado para este participante, apenas avisa — nunca
-      // altera o campo do outro dia (checkin_sexta / checkin_sabado).
-      if (inscricao['checkin_' + diaAtual]) {
-        atualizarBadgesDias(inscricao);
-        mostrarResultadoCheckin(
-          'aviso',
-          'Check-in de ' + nomeDiaAtual + ' já foi realizado',
-          'Atenção: o check-in de ' + nomeDiaAtual + ' já foi realizado para ' + inscricao.nome_completo + '. Nenhuma alteração foi feita.'
-        );
+      // TRAVA DE DUPLICIDADE (1ª camada): o dia vigente já consta como
+      // feito na leitura que acabamos de fazer. Apenas avisa — nunca
+      // altera o campo do outro dia.
+      if (inscricao[chaveDia]) {
+        mostrarAvisoCheckinJaRealizado(inscricao, nomeDiaAtual);
         return;
       }
 
       const camposParaAtualizar = {};
-      camposParaAtualizar['checkin_' + diaAtual] = true;
+      camposParaAtualizar[chaveDia] = true;
       // Mantém "checkin_realizado" (usado pelo dashboard e pelos
       // contadores gerais) sempre em dia com os dois campos novos:
       // vira verdadeiro assim que QUALQUER um dos dias for concluído.
       camposParaAtualizar.checkin_realizado = true;
 
-      const { error: erroUpdate } = await window.supabaseClient
+      // TRAVA DE DUPLICIDADE (2ª camada, no banco): o UPDATE só vale se
+      // o dia ainda NÃO estiver marcado (evita que dois aparelhos lendo
+      // o mesmo código ao mesmo tempo registrem duas vezes). O
+      // ".select()" devolve as linhas realmente alteradas — sem ele,
+      // um UPDATE barrado pela RLS ou pela condição "voltaria" sem
+      // erro e pareceria ter funcionado.
+      const { data: linhasAtualizadas, error: erroUpdate } = await window.supabaseClient
         .from('inscricoes')
         .update(camposParaAtualizar)
-        .eq('id', inscricao.id);
+        .eq('id', inscricao.id)
+        .or(chaveDia + '.is.null,' + chaveDia + '.eq.false')
+        .select('*');
 
       if (erroUpdate) {
+        console.error('[admin.js] Erro ao registrar o check-in:', erroUpdate);
+        esconderBadgesDias();
         mostrarResultadoCheckin('erro', 'Erro ao confirmar check-in', 'Tente novamente em instantes.');
         return;
       }
 
-      // Reflete a mudança na cópia local para os contadores da
-      // portaria e do dashboard ficarem corretos sem novo fetch (o
-      // Realtime também vai confirmar essa mudança pouco depois).
-      inscricao['checkin_' + diaAtual] = true;
-      inscricao.checkin_realizado = true;
-      const jaExisteNaLista = listaInscricoes.some(function (i) { return String(i.id) === String(inscricao.id); });
-      if (jaExisteNaLista) {
-        listaInscricoes = listaInscricoes.map(function (i) {
-          return String(i.id) === String(inscricao.id) ? inscricao : i;
-        });
-      } else {
-        listaInscricoes.push(inscricao);
+      if (!linhasAtualizadas || linhasAtualizadas.length === 0) {
+        // Nenhuma linha foi alterada. Ou outro aparelho acabou de
+        // registrar este mesmo check-in, ou o usuário não tem permissão
+        // de gravar. Relê o registro para descobrir qual dos dois.
+        const { data: registroAtual } = await window.supabaseClient
+          .from('inscricoes')
+          .select('*')
+          .eq('id', inscricao.id)
+          .maybeSingle();
+
+        if (registroAtual && registroAtual[chaveDia]) {
+          sincronizarInscricaoLocal(registroAtual);
+          atualizarContadoresCheckin();
+          mostrarAvisoCheckinJaRealizado(registroAtual, nomeDiaAtual);
+          return;
+        }
+
+        console.error('[admin.js] O check-in não foi gravado (0 linhas alteradas). Provável falta de permissão (RLS de UPDATE) para este usuário.');
+        esconderBadgesDias();
+        mostrarResultadoCheckin(
+          'erro',
+          'Check-in NÃO foi registrado',
+          'O sistema não conseguiu gravar o check-in de ' + inscricao.nome_completo + '. Avise o administrador antes de liberar a entrada.'
+        );
+        return;
       }
+
+      // Sucesso: usa a linha devolvida pelo banco (estado real) para
+      // os contadores e badges ficarem corretos sem novo fetch (o
+      // Realtime também vai confirmar essa mudança pouco depois).
+      const inscricaoAtualizada = linhasAtualizadas[0];
+      sincronizarInscricaoLocal(inscricaoAtualizada);
       atualizarContadoresCheckin();
-      atualizarBadgesDias(inscricao);
 
       mostrarResultadoCheckin(
         'ok',
         'Check-in de ' + nomeDiaAtual + ' Realizado com Sucesso!',
-        inscricao.nome_completo + ' — ' + (NOMES_COMBO[inscricao.tipo_ingresso] || inscricao.tipo_ingresso)
+        inscricaoAtualizada.nome_completo + ' — ' + (NOMES_COMBO[inscricaoAtualizada.tipo_ingresso] || inscricaoAtualizada.tipo_ingresso)
+      );
+      atualizarBadgesDiasSeguro(inscricaoAtualizada);
+    } catch (erroInesperado) {
+      // Qualquer falha inesperada vira um card de erro — nunca deixa o
+      // card ANTERIOR (ex.: o verde da leitura passada) na tela como
+      // se fosse o resultado desta leitura.
+      console.error('[admin.js] Erro inesperado ao processar o check-in:', erroInesperado);
+      esconderBadgesDias();
+      mostrarResultadoCheckin(
+        'erro',
+        'Erro ao processar o código',
+        'Algo deu errado. Escaneie novamente ou use a validação manual.'
       );
     } finally {
       processandoCheckin = false;
       btnValidarManual.disabled = false;
+      // Só limpa o campo. NÃO devolve o foco a ele: o teclado do celular
+      // só deve abrir se o operador tocar na caixa de texto.
       codigoManualInput.value = '';
-      codigoManualInput.focus();
 
       // Só a câmera entra em cooldown — a validação manual pode ser
       // repetida imediatamente, caso o operador precise corrigir e
