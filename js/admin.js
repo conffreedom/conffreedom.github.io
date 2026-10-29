@@ -199,9 +199,49 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // Role do usuário, lida de app_metadata (só o servidor consegue
+  // alterar — o próprio usuário não). Sem role definida, assume
+  // 'admin' (regra de negócio atual).
+  function obterRoleUsuario(usuario) {
+    const role = usuario && usuario.app_metadata ? usuario.app_metadata.role : '';
+    return String(role || 'admin').trim().toLowerCase();
+  }
+
+  // Aplica (ou REMOVE) as restrições visuais da role 'portaria':
+  // card de Arrecadação, campo de busca e tabela ficam borrados e
+  // inertes (sem clique, foco, teclado ou seleção), e o botão de
+  // exportar CSV é ocultado. Para qualquer outra role, desfaz tudo —
+  // importante porque a mesma página pode ser usada por uma conta
+  // 'portaria' e, depois do "Sair", por uma conta 'admin'.
+  function aplicarRestricoesPorRole(roleUsuario) {
+    const restrito = roleUsuario === 'portaria';
+
+    const cardArrecadacao = statArrecadado ? statArrecadado.closest('.stat') : null;
+    const secaoTabela = document.querySelector('.tabela-wrap');
+    const campoBusca = document.getElementById('campoFiltroTabela');
+    const containerBusca = campoBusca ? campoBusca.parentNode : null;
+
+    [cardArrecadacao, containerBusca, secaoTabela].forEach(function (elemento) {
+      if (!elemento) return;
+      elemento.classList.toggle('blur-portaria', restrito);
+      if (restrito) {
+        elemento.setAttribute('inert', '');
+      } else {
+        elemento.removeAttribute('inert');
+      }
+    });
+
+    if (btnExportarCsv) btnExportarCsv.style.display = restrito ? 'none' : '';
+  }
+
   async function iniciarDashboard(sessao) {
     const usuario = sessao && sessao.user ? sessao.user : (await window.supabaseClient.auth.getUser()).data.user;
     adminEmailLogado.textContent = usuario ? usuario.email : '—';
+
+    // >>> ADIÇÃO: restrições por role (antes de mostrar a tela e de
+    // carregar os dados, para a portaria nunca ver um "flash" nítido).
+    const roleUsuario = obterRoleUsuario(usuario);
+    aplicarRestricoesPorRole(roleUsuario);
 
     mostrarTela('dashboard');
     await carregarInscricoes();
@@ -353,13 +393,26 @@ document.addEventListener('DOMContentLoaded', function () {
     return div.innerHTML;
   }
 
+  // Normaliza o status de pagamento vindo do banco (ignora espaços e
+  // diferença entre maiúsculas/minúsculas: "Pendente", " pendente ",
+  // "PENDENTE" valem todos como "pendente").
+  function normalizarStatusPagamento(status) {
+    return String(status === null || status === undefined ? '' : status)
+      .trim()
+      .toLowerCase();
+  }
+
   function atualizarEstatisticas() {
     // Os contadores sempre refletem TODAS as inscrições, mesmo com
     // um filtro de busca ativo na tabela — são números do evento
     // como um todo, não da busca no momento.
     const total = listaInscricoes.length;
-    const aprovados = listaInscricoes.filter(function (i) { return i.status_pagamento === 'aprovado'; });
-    const pendentes = listaInscricoes.filter(function (i) { return i.status_pagamento === 'pendente'; });
+    const aprovados = listaInscricoes.filter(function (i) {
+      return normalizarStatusPagamento(i.status_pagamento) === 'aprovado';
+    });
+    const pendentes = listaInscricoes.filter(function (i) {
+      return normalizarStatusPagamento(i.status_pagamento) === 'pendente';
+    });
     const checkins = listaInscricoes.filter(function (i) { return i.checkin_realizado; });
 
     const arrecadado = aprovados.reduce(function (soma, i) { return soma + Number(i.valor_pago || 0); }, 0);
